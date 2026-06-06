@@ -1,6 +1,7 @@
 #thinh khiem khanh huyen
 import streamlit as st
 from pydantic import BaseModel
+from typing import Optional
 import base64
 from openai import OpenAI
 import time
@@ -9,17 +10,18 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import schedule
+import re
 
 class ThongTinThuoc(BaseModel):
     ten_thuoc: str 
-    lieu_luong: str 
-    cac_buoi_uong: list[str] 
-    gio_uong_goi_y: list[str] 
-    ghi_chu: str 
+    lieu_luong: Optional[str] = ""
+    cac_buoi_uong: list[str] = []
+    gio_uong_goi_y: list[str] = []
+    ghi_chu: Optional[str] = ""
 
 class ToaThuocSmart(BaseModel):
     danh_sach_thuoc: list[ThongTinThuoc]
-    so_ngay_uong: int 
+    so_ngay_uong: Optional[int] = 1
 
 def gui_email(email_nhan, tieu_de, noi_dung):
     try:
@@ -56,14 +58,26 @@ def cai_dat_hen_gio(du_lieu_toa, email_nhan):
     st.session_state.bo_lenh_lich.clear()
     for thuoc in du_lieu_toa.danh_sach_thuoc:
         for gio in thuoc.gio_uong_goi_y:
-            tieu_de = f"ĐẾN GIỜ UỐNG THUỐC: {thuoc.ten_thuoc}"
-            noi_dung = f"Liều dùng: {thuoc.lieu_luong}\nGhi chú: {thuoc.ghi_chu}"
-            st.session_state.bo_lenh_lich.every().day.at(gio).do(
-                gui_email,
-                email_nhan=email_nhan,
-                tieu_de=tieu_de,
-                noi_dung=noi_dung
-            )
+            gio_chuan = gio.strip()
+            match = re.search(r'(\d{1,2}):(\d{2})', gio_chuan)
+            if match:
+                h, m = match.groups()
+                gio_chuan = f"{int(h):02d}:{int(m):02d}"
+            else:
+                gio_chuan = "08:00"
+                
+            try:
+                tieu_de = f"ĐẾN GIỜ UỐNG THUỐC: {thuoc.ten_thuoc}"
+                noi_dung = f"Liều dùng: {thuoc.lieu_luong}\nGhi chú: {thuoc.ghi_chu}"
+                st.session_state.bo_lenh_lich.every().day.at(gio_chuan).do(
+                    gui_email,
+                    email_nhan=email_nhan,
+                    tieu_de=tieu_de,
+                    noi_dung=noi_dung
+                )
+            except Exception as e:
+                print(f"Bỏ qua giờ lỗi: {e}")
+                
     st.toast("Đã kích hoạt lịch nhắc nhở qua Gmail thành công!")
 
 def encode_image(file_anh):
@@ -80,8 +94,9 @@ def doc_toa_thuoc_bang_ai(file_anh):
     loi_dan = """
     Hãy đọc thật kỹ toa thuốc trong ảnh này.
     Trích xuất chính xác: tên thuốc, liều dùng, số ngày uống, ghi chú (nếu có).
-    Đổi các buổi uống (Sáng, Trưa, Chiều, Tối) thành giờ cụ thể gợi ý tương ứng (08:00, 12:00, 16:00, 20:00).
-    TRẢ VỀ DUY NHẤT ĐỊNH DẠNG JSON (không giải thích thêm) theo cấu trúc mẫu sau:
+    Đổi các buổi uống (Sáng, Trưa, Chiều, Tối) thành giờ cụ thể gợi ý chuẩn 24h (BẮT BUỘC ĐỊNH DẠNG HH:MM, ví dụ: "08:00", "12:00", "16:00", "20:00").
+    TRẢ VỀ DUY NHẤT ĐỊNH DẠNG JSON. Nếu trường nào không có thông tin, hãy trả về chuỗi rỗng "", tuyệt đối KHÔNG dùng null.
+    Cấu trúc mẫu:
     {
       "danh_sach_thuoc": [
         {
@@ -135,7 +150,7 @@ if file_tai_len is not None:
         if not email_nguoi_dung:
             st.error("Vui lòng nhập Gmail của bạn trước khi tiếp tục.")
         else:
-            with st.spinner("SambaNova Llama 4 Maverick đang phân tích ảnh..."):
+            with st.spinner("SambaNova AI đang phân tích đơn thuốc..."):
                 try:
                     du_lieu = doc_toa_thuoc_bang_ai(file_tai_len)
                     if du_lieu:
