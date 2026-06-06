@@ -96,7 +96,7 @@ def doc_toa_thuoc_bang_ai(file_anh):
     """
 
     response = client.chat.completions.create(
-        model="Llama-3.2-11B-Vision-Instruct", 
+        model="Llama-4-Maverick-17B-128E-Instruct", 
         messages=[
             {
                 "role": "user",
@@ -134,7 +134,7 @@ if file_tai_len is not None:
         if not email_nguoi_dung:
             st.error("Vui lòng nhập Gmail của bạn trước khi tiếp tục.")
         else:
-            with st.spinner("SambaNova Llama-3.2 Vision đang quét đơn thuốc..."):
+            with st.spinner("SambaNova Llama 4 Maverick đang phân tích ảnh..."):
                 try:
                     du_lieu = doc_toa_thuoc_bang_ai(file_tai_len)
                     if du_lieu:
@@ -153,4 +153,4 @@ if file_tai_len is not None:
                                 if thuoc.ghi_chu: 
                                     st.info(f"**Ghi chú:** {thuoc.ghi_chu}")
                 except Exception as e:
-                    st.error(f"Lỗi: {e}")
+                    st.error(f"Lỗi hệ thống: {e}")
