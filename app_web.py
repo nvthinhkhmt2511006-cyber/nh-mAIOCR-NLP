@@ -1,7 +1,7 @@
 #thinh huyen khiem khanh
 import streamlit as st
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field
+from typing import Optional, List
 import base64
 from openai import OpenAI
 import time
@@ -13,15 +13,15 @@ import schedule
 import re
 
 class ThongTinThuoc(BaseModel):
-    ten_thuoc: str 
-    lieu_luong: Optional[str] = ""
-    cac_buoi_uong: list[str] = []
-    gio_uong_goi_y: list[str] = []
-    ghi_chu: Optional[str] = ""
+    ten_thuoc: str = Field(default="")
+    lieu_luong: Optional[str] = Field(default="")
+    cac_buoi_uong: List[str] = Field(default_factory=list)
+    gio_uong_goi_y: List[str] = Field(default_factory=list)
+    ghi_chu: Optional[str] = Field(default="")
 
 class ToaThuocSmart(BaseModel):
-    danh_sach_thuoc: list[ThongTinThuoc]
-    so_ngay_uong: int = 1
+    danh_sach_thuoc: List[ThongTinThuoc] = Field(default_factory=list)
+    so_ngay_uong: int = Field(default=1)
 
 def gui_email(email_nhan, tieu_de, noi_dung):
     try:
@@ -58,7 +58,9 @@ def cai_dat_hen_gio(du_lieu_toa, email_nhan):
     st.session_state.bo_lenh_lich.clear()
     for thuoc in du_lieu_toa.danh_sach_thuoc:
         for gio in thuoc.gio_uong_goi_y:
-            gio_chuan = gio.strip()
+            if not gio:
+                continue
+            gio_chuan = str(gio).strip()
             match = re.search(r'(\d{1,2}):(\d{2})', gio_chuan)
             if match:
                 h, m = match.groups()
@@ -68,7 +70,7 @@ def cai_dat_hen_gio(du_lieu_toa, email_nhan):
                 
             try:
                 tieu_de = f"ĐẾN GIỜ UỐNG THUỐC: {thuoc.ten_thuoc}"
-                noi_dung = f"Liều dùng: {thuoc.lieu_luong}\nGhi chú: {thuoc.ghi_chu}"
+                noi_dung = f"Liều dùng: {thuoc.lieu_luong or ''}\nGhi chú: {thuoc.ghi_chu or ''}"
                 st.session_state.bo_lenh_lich.every().day.at(gio_chuan).do(
                     gui_email,
                     email_nhan=email_nhan,
@@ -97,8 +99,8 @@ def doc_toa_thuoc_bang_ai(file_anh):
     Đổi các buổi uống (Sáng, Trưa, Chiều, Tối) thành giờ cụ thể gợi ý chuẩn 24h (BẮT BUỘC ĐỊNH DẠNG HH:MM, ví dụ: "08:00", "12:00", "16:00", "20:00").
     TRẢ VỀ DUY NHẤT ĐỊNH DẠNG JSON. 
     LƯU Ý QUAN TRỌNG:
-    - Nếu trường văn bản nào không có thông tin, hãy trả về chuỗi rỗng "". Tuyệt đối KHÔNG dùng null.
-    - Riêng trường "so_ngay_uong" BẮT BUỘC phải là một SỐ NGUYÊN (ví dụ: 5, 7). Nếu đơn thuốc không ghi số ngày, hãy trả về số 1. TUYỆT ĐỐI KHÔNG trả về chuỗi rỗng "" cho trường này.
+    - Nếu trường văn bản nào không có thông tin hoặc trống, hãy điền chuỗi rỗng "". Tuyệt đối KHÔNG sử dụng null.
+    - Riêng trường "so_ngay_uong" BẮT BUỘC phải là một SỐ NGUYÊN (ví dụ: 5, 7). Nếu đơn thuốc không ghi số ngày, hãy trả về số 1. TUYỆT ĐỐI KHÔNG trả về chuỗi rỗng "" hoặc null cho trường này.
     Cấu trúc mẫu:
     {
       "danh_sach_thuoc": [
@@ -168,15 +170,19 @@ if file_tai_len is not None:
                         st.success(f"Đơn thuốc dùng trong {du_lieu.so_ngay_uong} ngày")
                         noi_dung_tong_hop = f"Lịch uống thuốc tổng hợp của bạn ({du_lieu.so_ngay_uong} ngày):\n\n"
                         for thuoc in du_lieu.danh_sach_thuoc:
-                            noi_dung_tong_hop += f"- Thuốc: {thuoc.ten_thuoc}\n  Liều dùng: {thuoc.lieu_luong}\n  Giờ nhắc: {', '.join(thuoc.gio_uong_goi_y)}\n  Ghi chú: {thuoc.ghi_chu}\n\n"
+                            ten_t = thuoc.ten_thuoc or "Thuốc không rõ tên"
+                            lieu_l = thuoc.lieu_luong or "Chưa rõ liều lượng"
+                            ghi_c = thuoc.ghi_chu or "Không có ghi chú"
+                            g_nhac = ', '.join(thuoc.gio_uong_goi_y) if thuoc.gio_uong_goi_y else "Chưa đặt giờ"
+                            noi_dung_tong_hop += f"- Thuốc: {ten_t}\n  Liều dùng: {lieu_l}\n  Giờ nhắc: {g_nhac}\n  Ghi chú: {ghi_c}\n\n"
                         
                         gui_email(email_nguoi_dung, "Tổng hợp lịch uống thuốc", noi_dung_tong_hop)
                         cai_dat_hen_gio(du_lieu, email_nguoi_dung)
                         
                         for thuoc in du_lieu.danh_sach_thuoc:
-                            with st.expander(thuoc.ten_thuoc):
-                                st.write(f"**Liều dùng:** {thuoc.lieu_luong}")
-                                st.write(f"**Giờ uống báo thức:** {', '.join(thuoc.gio_uong_goi_y)}")
+                            with st.expander(thuoc.ten_thuoc or "Thuốc chưa rõ tên"):
+                                st.write(f"**Liều dùng:** {thuoc.lieu_luong or 'Chưa rõ liều lượng'}")
+                                st.write(f"**Giờ uống báo thức:** {', '.join(thuoc.gio_uong_goi_y) if thuoc.gio_uong_goi_y else 'Chưa đặt giờ'}")
                                 if thuoc.ghi_chu: 
                                     st.info(f"**Ghi chú:** {thuoc.ghi_chu}")
                 except Exception as e:
