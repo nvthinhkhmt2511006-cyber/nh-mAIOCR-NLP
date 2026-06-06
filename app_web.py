@@ -114,32 +114,40 @@ def doc_toa_thuoc_bang_ai(file_anh):
     }
     """
 
-    response = client.chat.completions.create(
-        model="Llama-4-Maverick-17B-128E-Instruct", 
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": loi_dan},
+    for luot_thu in range(3):
+        try:
+            response = client.chat.completions.create(
+                model="Llama-4-Maverick-17B-128E-Instruct", 
+                messages=[
                     {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{base64_image}"
-                        }
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": loi_dan},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{base64_image}"
+                                }
+                            }
+                        ]
                     }
-                ]
-            }
-        ],
-        temperature=0.1
-    )
-    
-    ket_qua = response.choices[0].message.content
-    if "```json" in ket_qua:
-        ket_qua = ket_qua.split("```json")[1].split("```")[0].strip()
-    elif "```" in ket_qua:
-        ket_qua = ket_qua.split("```")[1].split("```")[0].strip()
-        
-    return ToaThuocSmart.model_validate_json(ket_qua)
+                ],
+                temperature=0.1
+            )
+            
+            ket_qua = response.choices[0].message.content
+            if "```json" in ket_qua:
+                ket_qua = ket_qua.split("```json")[1].split("```")[0].strip()
+            elif "```" in ket_qua:
+                ket_qua = ket_qua.split("```")[1].split("```")[0].strip()
+                
+            return ToaThuocSmart.model_validate_json(ket_qua)
+            
+        except Exception as e:
+            if "429" in str(e) and luot_thu < 2:
+                time.sleep(6)
+                continue
+            raise e
 
 st.set_page_config(page_title="Trợ Lý Nhắc Thuốc")
 st.title("Trợ Lý Đọc Toa Thuốc & Nhắc Nhở")
@@ -172,4 +180,7 @@ if file_tai_len is not None:
                                 if thuoc.ghi_chu: 
                                     st.info(f"**Ghi chú:** {thuoc.ghi_chu}")
                 except Exception as e:
-                    st.error(f"Lỗi hệ thống: {e}")
+                    if "429" in str(e):
+                        st.error("Hệ thống AI đang quá tải lượt yêu cầu miễn phí. Vui lòng đợi khoảng 10-15 giây rồi bấm lại nút 'Phân tích'.")
+                    else:
+                        st.error(f"Lỗi hệ thống: {e}")
