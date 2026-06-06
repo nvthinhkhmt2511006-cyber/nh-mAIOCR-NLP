@@ -1,5 +1,5 @@
 streamlit
 pydantic
-google-genai
+openai
 pillow
 schedule
