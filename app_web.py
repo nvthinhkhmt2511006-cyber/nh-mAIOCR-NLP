@@ -1,4 +1,4 @@
-#thinh khiem khanh huyen
+#thinh huyen khiem khanh
 import streamlit as st
 from pydantic import BaseModel
 from typing import Optional
@@ -21,7 +21,7 @@ class ThongTinThuoc(BaseModel):
 
 class ToaThuocSmart(BaseModel):
     danh_sach_thuoc: list[ThongTinThuoc]
-    so_ngay_uong: Optional[int] = 1
+    so_ngay_uong: int = 1
 
 def gui_email(email_nhan, tieu_de, noi_dung):
     try:
@@ -95,7 +95,10 @@ def doc_toa_thuoc_bang_ai(file_anh):
     Hãy đọc thật kỹ toa thuốc trong ảnh này.
     Trích xuất chính xác: tên thuốc, liều dùng, số ngày uống, ghi chú (nếu có).
     Đổi các buổi uống (Sáng, Trưa, Chiều, Tối) thành giờ cụ thể gợi ý chuẩn 24h (BẮT BUỘC ĐỊNH DẠNG HH:MM, ví dụ: "08:00", "12:00", "16:00", "20:00").
-    TRẢ VỀ DUY NHẤT ĐỊNH DẠNG JSON. Nếu trường nào không có thông tin, hãy trả về chuỗi rỗng "", tuyệt đối KHÔNG dùng null.
+    TRẢ VỀ DUY NHẤT ĐỊNH DẠNG JSON. 
+    LƯU Ý QUAN TRỌNG:
+    - Nếu trường văn bản nào không có thông tin, hãy trả về chuỗi rỗng "". Tuyệt đối KHÔNG dùng null.
+    - Riêng trường "so_ngay_uong" BẮT BUỘC phải là một SỐ NGUYÊN (ví dụ: 5, 7). Nếu đơn thuốc không ghi số ngày, hãy trả về số 1. TUYỆT ĐỐI KHÔNG trả về chuỗi rỗng "" cho trường này.
     Cấu trúc mẫu:
     {
       "danh_sach_thuoc": [
