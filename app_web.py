@@ -1,4 +1,3 @@
-#thinh
 import streamlit as st
 from pydantic import BaseModel
 import base64
@@ -66,19 +65,15 @@ def cai_dat_hen_gio(du_lieu_toa, email_nhan):
             )
     st.toast("Đã kích hoạt lịch nhắc nhở qua Gmail thành công!")
 
-def encode_image(file_anh):
-    return base64.b64encode(file_anh.getvalue()).decode('utf-8')
-
-def doc_toa_thuoc_bang_ai(file_anh):
+def doc_toa_thuoc_bang_ai(van_ban_toa):
     api_key_cua_ban = st.secrets["SAMBANOVA_API_KEY"]
     client = OpenAI(
         api_key=api_key_cua_ban,
         base_url="https://api.sambanova.ai/v1",
     )
-    base64_image = encode_image(file_anh)
     
     loi_dan = """
-    Hãy đọc thật kỹ toa thuốc trong ảnh này.
+    Hãy phân tích đoạn văn bản đơn thuốc sau đây.
     Trích xuất chính xác: tên thuốc, liều dùng, số ngày uống, ghi chú (nếu có).
     Đổi các buổi uống (Sáng, Trưa, Chiều, Tối) thành giờ cụ thể gợi ý tương ứng (08:00, 12:00, 16:00, 20:00).
     TRẢ VỀ DUY NHẤT ĐỊNH DẠNG JSON (không giải thích thêm) theo cấu trúc mẫu sau:
@@ -97,20 +92,10 @@ def doc_toa_thuoc_bang_ai(file_anh):
     """
 
     response = client.chat.completions.create(
-        model="Llama-3.2-11B-Vision-Instruct", 
+        model="llama3.1-8b", 
         messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": loi_dan},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{base64_image}"
-                        }
-                    }
-                ]
-            }
+            {"role": "system", "content": loi_dan},
+            {"role": "user", "content": van_ban_toa}
         ],
         temperature=0.1
     )
@@ -124,20 +109,19 @@ def doc_toa_thuoc_bang_ai(file_anh):
     return ToaThuocSmart.model_validate_json(ket_qua)
 
 st.set_page_config(page_title="Trợ Lý Nhắc Thuốc")
-st.title("Trợ Lý Đọc Toa Thuốc & Nhắc Nhở")
+st.title("Trợ Lý Phân Tích Toa Thuốc & Nhắc Nhở")
 
 email_nguoi_dung = st.text_input("Nhập Gmail của bạn để nhận lịch nhắc nhở:")
-file_tai_len = st.file_uploader("Tải ảnh toa thuốc của bạn lên đây...", type=["jpg", "jpeg", "png"])
+van_ban_nhap = st.text_area("Dán nội dung chữ của đơn thuốc vào đây...", height=150)
 
-if file_tai_len is not None:
-    st.image(file_tai_len, caption="Ảnh đã tải lên", use_container_width=True)
+if van_ban_nhap:
     if st.button("Phân tích & Bật báo thức"):
         if not email_nguoi_dung:
             st.error("Vui lòng nhập Gmail của bạn trước khi tiếp tục.")
         else:
-            with st.spinner("SambaNova Llama-3.2 Vision đang quét đơn thuốc..."):
+            with st.spinner("SambaNova Llama 3.1 đang xử lý dữ liệu..."):
                 try:
-                    du_lieu = doc_toa_thuoc_bang_ai(file_tai_len)
+                    du_lieu = doc_toa_thuoc_bang_ai(van_ban_nhap)
                     if du_lieu:
                         st.success(f"Đơn thuốc dùng trong {du_lieu.so_ngay_uong} ngày")
                         noi_dung_tong_hop = f"Lịch uống thuốc tổng hợp của bạn ({du_lieu.so_ngay_uong} ngày):\n\n"
