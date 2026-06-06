@@ -1,15 +1,14 @@
-#Thinh
+#thinh
 import streamlit as st
 from pydantic import BaseModel
-from google import genai
-from google.genai import types
-from PIL import Image
+import base64
+from openai import OpenAI
 import time
 import threading
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-
+import schedule
 
 class ThongTinThuoc(BaseModel):
     ten_thuoc: str 
@@ -22,12 +21,10 @@ class ToaThuocSmart(BaseModel):
     danh_sach_thuoc: list[ThongTinThuoc]
     so_ngay_uong: int 
 
-
 def gui_email(email_nhan, tieu_de, noi_dung):
     try:
-        
-        email_gui = st.secrets["thinhai20077@gmail.com"]
-        mat_khau_gui = st.secrets["Thinhobito1@"]
+        email_gui = st.secrets["EMAIL_HE_THONG"]
+        mat_khau_gui = st.secrets["MAT_KHAU_HE_THONG"]
         
         msg = MIMEMultipart()
         msg['From'] = email_gui
@@ -45,27 +42,23 @@ def gui_email(email_nhan, tieu_de, noi_dung):
         print(f"Lỗi gửi email: {e}")
         return False
 
-def vong_lap_canh_gio():
-    import schedule
+def vong_lap_canh_gio(bo_lenh_lich):
     while True:
-        schedule.run_pending()
+        bo_lenh_lich.run_pending()
         time.sleep(1)
 
-if "luong_chay_ngam" not in st.session_state:
-    import schedule
-    st.session_state.luong_chay_ngam = True
-    t = threading.Thread(target=vong_lap_canh_gio, daemon=True)
+if "bo_lenh_lich" not in st.session_state:
+    st.session_state.bo_lenh_lich = schedule.Scheduler()
+    t = threading.Thread(target=vong_lap_canh_gio, args=(st.session_state.bo_lenh_lich,), daemon=True)
     t.start()
 
 def cai_dat_hen_gio(du_lieu_toa, email_nhan):
-    import schedule
-    schedule.clear()
-    
+    st.session_state.bo_lenh_lich.clear()
     for thuoc in du_lieu_toa.danh_sach_thuoc:
         for gio in thuoc.gio_uong_goi_y:
             tieu_de = f"ĐẾN GIỜ UỐNG THUỐC: {thuoc.ten_thuoc}"
             noi_dung = f"Liều dùng: {thuoc.lieu_luong}\nGhi chú: {thuoc.ghi_chu}"
-            schedule.every().day.at(gio).do(
+            st.session_state.bo_lenh_lich.every().day.at(gio).do(
                 gui_email,
                 email_nhan=email_nhan,
                 tieu_de=tieu_de,
@@ -73,59 +66,85 @@ def cai_dat_hen_gio(du_lieu_toa, email_nhan):
             )
     st.toast("Đã kích hoạt lịch nhắc nhở qua Gmail thành công!")
 
+def encode_image(file_anh):
+    return base64.b64encode(file_anh.getvalue()).decode('utf-8')
 
 def doc_toa_thuoc_bang_ai(file_anh):
-    client = genai.Client(api_key="AQ.Ab8RN6Ib7G97w9qqsMcWTPtj2-UGwy9zLPGcD4OwdSy6QoDAKQ") 
+    api_key_cua_ban = st.secrets["SAMBANOVA_API_KEY"]
+    client = OpenAI(
+        api_key=api_key_cua_ban,
+        base_url="https://api.sambanova.ai/v1",
+    )
+    base64_image = encode_image(file_anh)
     
-    image = Image.open(file_anh)
     loi_dan = """
     Hãy đọc thật kỹ toa thuốc trong ảnh này.
     Trích xuất chính xác: tên thuốc, liều dùng, số ngày uống, ghi chú (nếu có).
     Đổi các buổi uống (Sáng, Trưa, Chiều, Tối) thành giờ cụ thể gợi ý tương ứng (08:00, 12:00, 16:00, 20:00).
-    Trả về dữ liệu dưới dạng JSON nghiêm ngặt tuân theo cấu trúc ToaThuocSmart.
+    TRẢ VỀ DUY NHẤT ĐỊNH DẠNG JSON (không giải thích thêm) theo cấu trúc mẫu sau:
+    {
+      "danh_sach_thuoc": [
+        {
+          "ten_thuoc": "Tên",
+          "lieu_luong": "Liều",
+          "cac_buoi_uong": ["Sáng", "Chiều"],
+          "gio_uong_goi_y": ["08:00", "16:00"],
+          "ghi_chu": "Sau ăn"
+        }
+      ],
+      "so_ngay_uong": 5
+    }
     """
 
-    response = client.models.generate_content(
-        model="gemini-3.5-flash",
-        contents=[image, loi_dan],
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=ToaThuocSmart,
-            temperature=0.1 
-        ),
+    response = client.chat.completions.create(
+        model="Llama-3.2-90B-Vision-Instruct", 
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": loi_dan},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{base64_image}"
+                        }
+                    }
+                ]
+            }
+        ],
+        temperature=0.1
     )
-    return ToaThuocSmart.model_validate_json(response.text)
-
+    
+    ket_qua = response.choices[0].message.content
+    if "```json" in ket_qua:
+        ket_qua = ket_qua.split("```json")[1].split("```")[0].strip()
+    elif "```" in ket_qua:
+        ket_qua = ket_qua.split("```")[1].split("```")[0].strip()
+        
+    return ToaThuocSmart.model_validate_json(ket_qua)
 
 st.set_page_config(page_title="Trợ Lý Nhắc Thuốc")
 st.title("Trợ Lý Đọc Toa Thuốc & Nhắc Nhở")
 
-
 email_nguoi_dung = st.text_input("Nhập Gmail của bạn để nhận lịch nhắc nhở:")
-
 file_tai_len = st.file_uploader("Tải ảnh toa thuốc của bạn lên đây...", type=["jpg", "jpeg", "png"])
 
 if file_tai_len is not None:
     st.image(file_tai_len, caption="Ảnh đã tải lên", use_container_width=True)
-    
     if st.button("Phân tích & Bật báo thức"):
         if not email_nguoi_dung:
             st.error("Vui lòng nhập Gmail của bạn trước khi tiếp tục.")
         else:
-            with st.spinner("AI đang quét đơn thuốc và lên lịch hẹn giờ..."):
+            with st.spinner("SambaNova Llama-3.2 Vision đang quét đơn thuốc..."):
                 try:
                     du_lieu = doc_toa_thuoc_bang_ai(file_tai_len)
                     if du_lieu:
                         st.success(f"Đơn thuốc dùng trong {du_lieu.so_ngay_uong} ngày")
-                        
                         noi_dung_tong_hop = f"Lịch uống thuốc tổng hợp của bạn ({du_lieu.so_ngay_uong} ngày):\n\n"
                         for thuoc in du_lieu.danh_sach_thuoc:
                             noi_dung_tong_hop += f"- Thuốc: {thuoc.ten_thuoc}\n  Liều dùng: {thuoc.lieu_luong}\n  Giờ nhắc: {', '.join(thuoc.gio_uong_goi_y)}\n  Ghi chú: {thuoc.ghi_chu}\n\n"
                         
-                        
                         gui_email(email_nguoi_dung, "Tổng hợp lịch uống thuốc", noi_dung_tong_hop)
-                        
-                        
                         cai_dat_hen_gio(du_lieu, email_nguoi_dung)
                         
                         for thuoc in du_lieu.danh_sach_thuoc:
@@ -135,4 +154,4 @@ if file_tai_len is not None:
                                 if thuoc.ghi_chu: 
                                     st.info(f"**Ghi chú:** {thuoc.ghi_chu}")
                 except Exception as e:
-                    st.error(f"Lỗi: Hãy chắc chắn bạn đã cấu hình Email Hệ Thống trong Secrets. Chi tiết lỗi: {e}")
+                    st.error(f"Lỗi: {e}")
