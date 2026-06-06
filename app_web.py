@@ -97,7 +97,7 @@ def doc_toa_thuoc_bang_ai(file_anh):
     """
 
     response = client.chat.completions.create(
-        model="Llama-3.2-90B-Vision-Instruct", 
+        model="Llama-3.2-11B-Vision-Instruct", 
         messages=[
             {
                 "role": "user",
